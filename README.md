@@ -12,15 +12,45 @@ Tested with Python 3.13. From the repository root:
 ```bash
 git clone https://github.com/RomitDeokar/ML_Unit4.git
 cd ML_Unit4
-# Until the PR is merged, switch to the complete implementation branch:
+# For the Streamlit/model extension until its PR is merged:
 git checkout genspark_ai_developer
 python -m venv .venv
 source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python app.py
+streamlit run streamlit_app.py
 ```
 
-Visit **http://localhost:3000**. Included artifacts let the demo start without retraining or downloading data. `PORT=8080 python app.py` changes the port (Unix). The Flask development server is suitable for this temporary demo only; use an appropriate WSGI server and hosting hardening for persistent deployments. No external API keys are needed.
+Visit **http://localhost:8501** for the native Streamlit dashboard. Included artifacts let the demo start without retraining or downloading data. The original Flask dashboard is preserved: `python app.py`, then visit **http://localhost:3000**. Both development servers are temporary research demos, not hardened production services. No external API keys are needed.
+
+### Streamlit dashboard and model extension
+
+The Streamlit app includes patient/cohort filtering, causal hour-by-hour vital and posterior charts, original/enhanced alert scores, explicitly retrospective smoothing/Viterbi views, patient CSV exports, ROC/precision–recall/reliability curves, confusion matrices, model selection, data-quality checks and all submission downloads. It accepts no uploads.
+
+**Streamlit Community Cloud:** select repository `RomitDeokar/ML_Unit4`, branch `genspark_ai_developer` (or `main` after merging), main file `streamlit_app.py`, and **Python 3.13**. `requirements.txt` includes the pinned Streamlit/Plotly dependencies. No secrets are required. Community Cloud publishing requires the owner's Streamlit login; a sandbox preview is a temporary running service, not a permanent `streamlit.app` deployment.
+
+Reproduce the extension after the original pipeline:
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m patientwatch.enhancement
+python -m pytest -q --basetemp=.cache/pytest
+streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true --browser.gatherUsageStats false
+```
+
+The original HMM, executed notebook, report and slides are unchanged and describe the **original** results below. The extension is separately saved in `artifacts/enhancement.json` with source SHA-256, selected head parameters, candidate validation metrics and per-patient predictions. Rebuild it whenever `artifacts/results.json` changes; the dashboard rejects mismatched sources.
+
+Training-only logistic heads use either causal filtered HMM posteriors or current/trailing vital features plus filtered posteriors. Eleven candidates include the original HMM and two feature families × five regularization strengths. Selection maximizes **validation AUROC**, breaking ties by validation Brier; Youden-J thresholds are validation-only. Neither smoothing, Viterbi, IDs nor simulator states enter predictors. The stored rounded vitals/posteriors are used for reproducibility. Simulator event labels supervise the head, so this is a **hybrid supervised extension**, not an improved unsupervised HMM.
+
+| Held-out synthetic test metric | Original HMM | Selected filtered-state head |
+|---|---:|---:|
+| AUROC | 0.7925 | 0.8012 |
+| Window sensitivity | 72.22% | 75.00% |
+| Window specificity | 84.28% | 83.13% |
+| Brier score (lower better) | 0.04789 | 0.04708 |
+| Events detected | 12/12 | 12/12 |
+| Median detected-event lead time | 5.5 h | 5.5 h |
+| Non-event patients alerted | 14/24 | 17/24 |
+
+Selected: filtered-state logistic head, **C=1**; validation AUROC **0.7624**, frozen threshold **0.02339**. Temporal features did not win validation selection. The AUROC difference is **+0.0088**; a paired 400-whole-patient bootstrap gives a 95% difference interval **[-0.0024, +0.0224]**, including zero. Enhanced AUROC interval: **[0.7182, 0.8855]**. **This is not an across-the-board improvement:** false alerts increase and specificity falls. The test cohort was already published; this extension is exploratory and needs a fresh external cohort, not repeated tuning to this test set. No clinical performance or calibration claim is made.
 
 ## Required submission files
 
@@ -30,7 +60,7 @@ Visit **http://localhost:3000**. Included artifacts let the demo start without r
 | Concise technical report | [`reports/technical_report.pdf`](reports/technical_report.pdf) |
 | Presentation (14 slides) | [`reports/PatientWatch_Presentation.pptx`](reports/PatientWatch_Presentation.pptx) |
 | Source code & README | This repository |
-| Working demonstration | `app.py`, `templates/`, `static/` |
+| Working demonstration | `streamlit_app.py` (native Streamlit); `app.py`, `templates/`, `static/` (original Flask) |
 | Raw synthetic dataset | [`data/synthetic_vitals.csv`](data/synthetic_vitals.csv) |
 | Saved model parameters | [`artifacts/model.npz`](artifacts/model.npz) |
 | Metrics & patient inference | [`artifacts/results.json`](artifacts/results.json) |
@@ -106,6 +136,10 @@ Event sensitivity and hourly sensitivity have different denominators. Lead time 
 
 ## Validation performed
 
+**Streamlit extension:** all **20 local automated tests pass** (12 original + 8 extension checks). Added checks cover prefix-invariant causal features, no retrospective/outcome predictor leakage, validation-only candidate/threshold selection, parameter-export prediction parity, exact artifact rebuild, recomputed event burden and all Streamlit pages/filter controls. Public Chromium checks verified page/chart rendering, patient CSV export and seven submission downloads. GitHub Actions remains unconfigured; these are local/browser checks, not GitHub CI results.
+
+**Original submission checks:**
+
 - **12 automated tests pass:** exact HMM enumeration, long-sequence scaling, causal preprocessing/filtering, chronological separation, artificial event censoring, saved-parameter reference inference, HTTP/download routes, artifact validity and recomputation of published test metrics.
 - Notebook: **all eight code cells executed**, no errors.
 - Submission formats: **five-page PDF**, valid **14-slide PPTX**.
@@ -127,7 +161,9 @@ Event sensitivity and hourly sensitivity have different denominators. Lead time 
 ## Structure
 
 ```text
+streamlit_app.py               Native Streamlit research dashboard
 app.py                         Read-only Flask app, API and safe download allowlist
+patientwatch/enhancement.py    Validation-selected causal supervised alert heads
 patientwatch/data.py           Simulator, cleaning, splitting, artificial outcome
 patientwatch/inference.py      From-scratch scaled sum-product and Viterbi
 patientwatch/pipeline.py       Training, causal evaluation, reference checks, bootstrap
