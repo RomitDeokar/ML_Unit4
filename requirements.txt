@@ -1,0 +1,13 @@
+numpy==2.3.5
+pandas==2.2.3
+scipy==1.17.1
+scikit-learn==1.6.1
+hmmlearn==0.3.3
+Flask==3.1.2
+matplotlib==3.10.8
+nbformat==5.10.4
+nbclient==0.10.2
+ipykernel==6.29.5
+python-pptx==1.0.2
+reportlab==4.4.10
+pytest==8.3.5
